@@ -207,17 +207,25 @@ def parse_time_str(time_str):
         return time(21, 0)
 
 
-def get_week_range(ref_date=None):
+def get_week_range(ref_date=None, include_weekend=True):
     """
     Given a reference date (defaults to today in user's timezone),
-    returns (monday_date, friday_date, [monday, tuesday, wednesday, thursday, friday]).
+    returns (monday_date, end_date, list_of_dates).
+    If include_weekend=True, returns all 7 days (Monday to Sunday) so weekend
+    dates (Saturday & Sunday) and today's date are always displayed and editable.
+    If include_weekend=False, returns 5 days (Monday to Friday).
     """
     if ref_date is None:
         ref_date = get_now_user().date()
     monday = ref_date - timedelta(days=ref_date.weekday())
-    friday = monday + timedelta(days=4)
-    weekdays = [monday + timedelta(days=i) for i in range(5)]
-    return monday, friday, weekdays
+    if include_weekend:
+        sunday = monday + timedelta(days=6)
+        all_days = [monday + timedelta(days=i) for i in range(7)]
+        return monday, sunday, all_days
+    else:
+        friday = monday + timedelta(days=4)
+        weekdays = [monday + timedelta(days=i) for i in range(5)]
+        return monday, friday, weekdays
 
 
 def get_weekday_name(day_index):
@@ -1116,7 +1124,7 @@ def generate_weekly_report_excel(start_date, end_date, tasks_list, weekdays_meta
     ws_summary.views.sheetView[0].showGridLines = True
 
     ws_summary.merge_cells("A1:D1")
-    ws_summary["A1"].value = "Weekly Activity Summary (Monday – Friday)"
+    ws_summary["A1"].value = "Weekly Activity Summary"
     ws_summary["A1"].font = TITLE_FONT
     ws_summary["A1"].fill = TITLE_FILL
     ws_summary["A1"].alignment = CENTER_ALIGN
@@ -1191,9 +1199,9 @@ def generate_weekly_report_excel(start_date, end_date, tasks_list, weekdays_meta
 
 
 def build_week_report_data(ref_date=None):
-    """Fetches notes and parses tasks for Monday-Friday week of ref_date."""
-    monday, friday, weekdays = get_week_range(ref_date)
-    notes_map = {n.date: n.content for n in DailyNote.query.filter(DailyNote.date >= monday, DailyNote.date <= friday).all()}
+    """Fetches notes and parses tasks for the full week (Monday through Sunday) of ref_date."""
+    monday, sunday, weekdays = get_week_range(ref_date, include_weekend=True)
+    notes_map = {n.date: n.content for n in DailyNote.query.filter(DailyNote.date >= monday, DailyNote.date <= sunday).all()}
 
     notes_by_day = []
     weekdays_meta = []
@@ -1222,7 +1230,8 @@ def build_week_report_data(ref_date=None):
 
     return {
         "monday": monday,
-        "friday": friday,
+        "friday": sunday,  # Alias so data['friday'] references week end date safely
+        "end_date": sunday,
         "weekdays": weekdays,
         "notes_map": notes_map,
         "has_any_notes": has_any_notes,
@@ -1489,8 +1498,8 @@ def dashboard():
     except Exception:
         selected_date = today
 
-    monday, friday, weekdays = get_week_range(today)
-    notes_in_week = DailyNote.query.filter(DailyNote.date >= monday, DailyNote.date <= friday).all()
+    monday, sunday, weekdays = get_week_range(today, include_weekend=True)
+    notes_in_week = DailyNote.query.filter(DailyNote.date >= monday, DailyNote.date <= sunday).all()
     week_notes_dict = {n.date: n.content for n in notes_in_week}
 
     selected_note = DailyNote.query.filter_by(date=selected_date).first()
@@ -1559,6 +1568,7 @@ def dashboard():
         csrf_token=get_csrf_token(),
         today=today,
         tomorrow=tomorrow,
+        now=now,
         this_saturday=this_saturday,
         this_sunday=this_sunday,
         upcoming_overrides=upcoming_overrides,
@@ -2289,11 +2299,17 @@ HTML_TEMPLATE = """
 
         .week-cards {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(7, 1fr);
             gap: 10px;
             margin-bottom: 20px;
         }
-        @media (max-width: 650px) {
+        @media (max-width: 960px) {
+            .week-cards { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .week-cards { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 380px) {
             .week-cards { grid-template-columns: 1fr; }
         }
         .day-card {
@@ -2312,7 +2328,15 @@ HTML_TEMPLATE = """
         }
         .day-card:hover { border-color: var(--primary); transform: translateY(-1px); }
         .day-card.selected { border-color: var(--primary); background: var(--primary-light); outline: 2px solid var(--primary); }
-        .day-card.today { font-weight: 600; }
+        .day-card.today {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary);
+            position: relative;
+        }
+        .day-card.today .day-card-name {
+            color: var(--primary);
+            font-weight: 700;
+        }
         .day-card-name { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
         .day-card.selected .day-card-name { color: var(--primary); }
         .day-card-date { font-size: 1rem; font-weight: 700; }
@@ -2442,6 +2466,11 @@ HTML_TEMPLATE = """
             Work Reporter
         </a>
         <div class="navbar-actions">
+            {% if session.get('logged_in') and now %}
+                <span class="badge badge-info" style="font-size: 0.82rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                    🗓️ <strong>{{ now.strftime('%A, %d %b %Y') }}</strong>
+                </span>
+            {% endif %}
             <button type="button" class="theme-toggle" id="themeToggle" title="Toggle Theme">
                 <span id="themeIcon">🌓</span>
                 <span id="themeLabel">Theme</span>
@@ -2491,17 +2520,25 @@ HTML_TEMPLATE = """
 
         {% elif view == 'dashboard' %}
 
-            <!-- Top Row: Weekly Notes (Mon-Fri) -->
+            <!-- Top Row: Weekly Notes (Mon-Sun) -->
             <div class="card" style="margin-bottom: 20px;">
                 <div class="card-header">
-                    <span class="card-title">📅 Weekly Notes (Mon – Fri)</span>
-                    <span class="badge badge-info">{{ recorded_days_count }} / 5 Days Recorded</span>
+                    <div>
+                        <span class="card-title">📅 Weekly Notes (Mon – Sun)</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">Timezone: <strong>{{ settings.timezone }}</strong></span>
+                    </div>
+                    <span class="badge badge-info">{{ recorded_days_count }} / {{ calendar_cards|length }} Days Recorded</span>
                 </div>
 
                 <div class="week-cards">
                     {% for c in calendar_cards %}
                         <a href="{{ url_for('dashboard', date=c.iso) }}" class="day-card {% if c.is_selected %}selected{% endif %} {% if c.is_today %}today{% endif %}" onclick="selectDateCard('{{ c.iso }}', {{ c.content|tojson }})">
-                            <span class="day-card-name">{{ c.name }}{% if c.is_today %} (Today){% endif %}</span>
+                            <span class="day-card-name">
+                                {{ c.name }}
+                                {% if c.is_today %}
+                                    <span style="background: var(--primary); color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">Today</span>
+                                {% endif %}
+                            </span>
                             <span class="day-card-date">{{ c.short_date }}</span>
                             <span class="day-card-status">
                                 {% if c.has_note %}
