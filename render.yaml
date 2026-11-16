@@ -45,3 +45,7 @@ services:
         sync: false
       - key: TIMETABLE_EXCEL_URL
         sync: false
+      - key: GMAIL_RELAY_URL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false

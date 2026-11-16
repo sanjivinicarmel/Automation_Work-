@@ -263,21 +263,129 @@ def validate_csrf():
         abort(400, description="Invalid or missing CSRF token.")
 
 # ==============================================================================
-# SMTP Email Dispatcher
+# Email Dispatcher (Supports HTTPS Google Apps Script Relay, Brevo API, & SMTP)
 # ==============================================================================
+import base64
+
+def send_email_via_relay(relay_url, to_email, subject, body_html, body_text=None, cc_email=None,
+                         owner_email=None, attachment_bytes=None, attachment_filename=None, attachment_mimetype=None):
+    """
+    Sends email over HTTPS (Port 443) using a lightweight Google Apps Script Web App relay.
+    Bypasses cloud host SMTP firewall blocks (like Render free tier [Errno 101]) and sends
+    directly from the user's Gmail account.
+    """
+    payload = {
+        "to": to_email,
+        "subject": subject,
+        "body_html": body_html,
+        "body_text": body_text or re.sub(r'<[^>]+>', '', body_html),
+        "cc": cc_email or "",
+        "reply_to": owner_email or "",
+        "attachments": []
+    }
+    if attachment_bytes and attachment_filename:
+        payload["attachments"].append({
+            "filename": attachment_filename,
+            "mimetype": attachment_mimetype or "application/octet-stream",
+            "data_base64": base64.b64encode(attachment_bytes).decode("utf-8")
+        })
+
+    headers = {"Content-Type": "application/json"}
+    resp = requests.post(relay_url, json=payload, headers=headers, timeout=35)
+    if resp.status_code in (200, 302):
+        try:
+            res_json = resp.json()
+            if res_json.get("status") == "error":
+                raise RuntimeError(f"Relay error: {res_json.get('message')}")
+        except Exception as e:
+            if "Relay error" in str(e):
+                raise
+        return True
+    else:
+        raise RuntimeError(f"Google Apps Script relay failed (HTTP {resp.status_code}): {resp.text[:200]}")
+
+
+def send_email_via_brevo(api_key, to_email, subject, body_html, body_text=None, cc_email=None,
+                         owner_email=None, attachment_bytes=None, attachment_filename=None):
+    """
+    Sends email over HTTPS (Port 443) using Brevo REST API (300 free emails/day).
+    """
+    url = "https://api.brevo.com/v3/smtp/email"
+    sender_email = owner_email or get_config("SMTP_USER", "sanjivinicarmel2001@gmail.com")
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "Work Reporter", "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": body_html,
+        "textContent": body_text or re.sub(r'<[^>]+>', '', body_html)
+    }
+    if cc_email:
+        payload["cc"] = [{"email": c.strip()} for c in cc_email.split(",") if c.strip()]
+    if attachment_bytes and attachment_filename:
+        payload["attachment"] = [{
+            "name": attachment_filename,
+            "content": base64.b64encode(attachment_bytes).decode("utf-8")
+        }]
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    if resp.status_code in (200, 201, 202):
+        return True
+    raise RuntimeError(f"Brevo API failed (HTTP {resp.status_code}): {resp.text[:250]}")
+
+
 def send_email(to_email, subject, body_html, body_text=None, cc_email=None,
                attachment_bytes=None, attachment_filename=None, attachment_mimetype=None):
     """
-    Sends email using SMTP with STARTTLS (or SSL on port 465).
-    Safely cleans whitespace from Gmail App Passwords and falls back gracefully.
+    Unified email dispatcher:
+    1. If GMAIL_RELAY_URL is set, dispatches via HTTPS (Port 443) Google Apps Script Web App.
+    2. Else if BREVO_API_KEY is set, dispatches via HTTPS (Port 443) Brevo API.
+    3. Otherwise falls back to SMTP (ports 587/465).
     """
+    owner_email = get_config("OWNER_EMAIL", "")
+
+    # Priority 1: Google Apps Script HTTPS Relay (Bypasses Render free tier SMTP block)
+    relay_url = get_config("GMAIL_RELAY_URL", "")
+    if relay_url:
+        return send_email_via_relay(
+            relay_url=relay_url,
+            to_email=to_email,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            cc_email=cc_email,
+            owner_email=owner_email,
+            attachment_bytes=attachment_bytes,
+            attachment_filename=attachment_filename,
+            attachment_mimetype=attachment_mimetype
+        )
+
+    # Priority 2: Brevo HTTPS REST API
+    brevo_key = get_config("BREVO_API_KEY", "")
+    if brevo_key:
+        return send_email_via_brevo(
+            api_key=brevo_key,
+            to_email=to_email,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            cc_email=cc_email,
+            owner_email=owner_email,
+            attachment_bytes=attachment_bytes,
+            attachment_filename=attachment_filename
+        )
+
+    # Priority 3: Standard SMTP (Local PC or open SMTP hosting)
     smtp_host = get_config("SMTP_HOST", "smtp.gmail.com")
     try:
         smtp_port = int(get_config("SMTP_PORT", "587"))
     except ValueError:
         smtp_port = 587
     smtp_user = get_config("SMTP_USER", "")
-    # Remove spaces from Google App Password (e.g. 'ngaq emor azwk gkxy' -> 'ngaqemorazwkgkxy')
     smtp_pass = get_config("SMTP_PASS", "").replace(" ", "")
 
     # Clean SMTP_FROM
@@ -288,10 +396,8 @@ def send_email(to_email, subject, body_html, body_text=None, cc_email=None,
         else:
             smtp_from = "Work Reporter <no-reply@example.com>"
 
-    owner_email = get_config("OWNER_EMAIL", "")
-
     if not smtp_host or not smtp_user or not smtp_pass:
-        raise ValueError("SMTP configuration incomplete: SMTP_HOST, SMTP_USER, or SMTP_PASS missing.")
+        raise ValueError("Email configuration incomplete: GMAIL_RELAY_URL, BREVO_API_KEY, or SMTP credentials missing.")
 
     msg = EmailMessage()
     msg["Subject"] = subject
