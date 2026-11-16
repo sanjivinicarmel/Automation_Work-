@@ -89,7 +89,9 @@ app.config["SECRET_KEY"] = get_config("SECRET_KEY", "work-reporter-secret-key-32
 DATABASE_URL = get_config("DATABASE_URL", "")
 if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 else:
     basedir = os.path.abspath(os.path.dirname(__file__))
@@ -151,11 +153,11 @@ class ScheduleOverride(db.Model):
 
 
 class TimetableImage(db.Model):
-    """Stores the latest timetable screenshot as a blob in the database."""
+    """Stores the latest timetable screenshot or file as a blob in the database."""
     __tablename__ = "timetable_images"
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
-    mimetype = db.Column(db.String(50), nullable=False)
+    mimetype = db.Column(db.String(150), nullable=False)
     data = db.Column(db.LargeBinary, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -1459,8 +1461,8 @@ def login():
 
     error = None
     if request.method == "POST":
-        entered_password = request.form.get("password", "")
-        app_password = get_config("APP_PASSWORD", "changeme")
+        entered_password = request.form.get("password", "").strip()
+        app_password = get_config("APP_PASSWORD", "changeme").strip()
         if secrets.compare_digest(entered_password, app_password):
             session["logged_in"] = True
             session.permanent = True
