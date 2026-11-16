@@ -495,8 +495,8 @@ def build_schedule_email_text(schedule_data):
             lines.append(f"• {s.start_time} – {s.end_time}: {s.subject}{room_info}")
         for a in additional_classes:
             room_info = f" [{a.room}]" if a.room else ""
-            note_info = f" (Note: {a.notes})" if a.notes else ""
-            lines.append(f"• {a.start_time} – {a.end_time}: {a.subject} [EXTRA CLASS]{room_info}{note_info}")
+            note_info = f" (Faculty incharge: {a.notes})" if a.notes else ""
+            lines.append(f"• {a.start_time} – {a.end_time}: {a.subject} [REPLACEMENT CLASS]{room_info}{note_info}")
 
     if special_notes:
         lines.append("")
@@ -543,12 +543,12 @@ def build_schedule_email_html(schedule_data):
             """)
         for a in additional_classes:
             room_pill = f'<span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-left: 8px;">{a.room}</span>' if a.room else ''
-            note_line = f'<div style="font-size: 12px; color: #b45309; margin-top: 4px;">Note: {a.notes}</div>' if a.notes else ''
+            note_line = f'<div style="font-size: 12px; color: #b45309; margin-top: 4px;">Faculty Incharge: {a.notes}</div>' if a.notes else ''
             items_html.append(f"""
             <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #fde68a; background: #fffbeb;">
                 <div style="font-weight: 700; color: #b45309; font-size: 14px; min-width: 170px;">
                     ⭐ {a.start_time} – {a.end_time}
-                    <div style="font-size: 10px; background: #f59e0b; color: white; display: inline-block; padding: 1px 5px; border-radius: 3px; margin-top: 2px;">ADDITIONAL CLASS</div>
+                    <div style="font-size: 10px; background: #f59e0b; color: white; display: inline-block; padding: 1px 5px; border-radius: 3px; margin-top: 2px;">REPLACEMENT CLASS</div>
                 </div>
                 <div style="flex: 1; margin-left: 14px; color: #92400e; font-size: 14px; font-weight: 600;">
                     {a.subject} {room_pill}
@@ -2854,18 +2854,18 @@ HTML_TEMPLATE = """
                                     <div class="schedule-item additional">
                                         <div class="schedule-time">⭐ {{ a.start_time }} – {{ a.end_time }}</div>
                                         <div class="schedule-detail">
-                                            <div class="schedule-subject">{{ a.subject }} <span class="badge badge-warning" style="font-size: 0.65rem;">EXTRA CLASS</span></div>
-                                            <div class="schedule-meta">Room: {{ a.room or '—' }} | Faculty: {{ a.faculty or '—' }}{% if a.notes %} | Note: {{ a.notes }}{% endif %}</div>
+                                            <div class="schedule-subject">{{ a.subject }} <span class="badge badge-warning" style="font-size: 0.65rem;">REPLACEMENT CLASS</span></div>
+                                            <div class="schedule-meta">Room: {{ a.room or '—' }} | Faculty: {{ a.faculty or '—' }}{% if a.notes %} | Faculty Incharge: {{ a.notes }}{% endif %}</div>
                                         </div>
                                         <form method="POST" action="{{ url_for('delete_schedule_override', override_id=a.id) }}" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-outline btn-sm" title="Remove additional class" onclick="return confirm('Remove this extra class?');">✕</button>
+                                            <button type="submit" class="btn btn-outline btn-sm" title="Remove replacement class" onclick="return confirm('Remove this replacement class?');">✕</button>
                                         </form>
                                     </div>
                                 {% endfor %}
                             {% else %}
                                 <div style="background: var(--bg-card-subtle); padding: 14px; border-radius: 6px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
-                                    No regular classes scheduled for {{ tomorrow_schedule.weekday_name }}. You can add an extra class below!
+                                    No regular classes scheduled for {{ tomorrow_schedule.weekday_name }}. You can add a replacement class below!
                                 </div>
                             {% endif %}
                         </div>
@@ -2873,7 +2873,7 @@ HTML_TEMPLATE = """
                         <!-- Human Input: Add Class / Special Note (Tomorrow, Saturday, Sunday, or any date) -->
                         <div style="background: var(--bg-card-subtle); padding: 14px; border-radius: 8px; margin-bottom: 16px;">
                             <strong style="display: block; font-size: 0.85rem; margin-bottom: 8px; color: var(--text-main);">
-                                ➕ Human Input: Add Class or Special Note (Any Date / Saturday / Sunday)
+                                ➕ Human Input: Add Replacement Class or Special Note (Any Date / Saturday / Sunday)
                             </strong>
                             <form method="POST" action="{{ url_for('add_schedule_override') }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -2892,7 +2892,7 @@ HTML_TEMPLATE = """
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label class="form-label">Subject / Topic</label>
-                                        <input type="text" name="subject" class="form-control" placeholder="E.g. Data Mining / Remedial Session" required>
+                                        <input type="text" name="subject" class="form-control" placeholder="E.g. Data Mining / Replacement Session" required>
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label">Section / Venue</label>
@@ -2910,18 +2910,18 @@ HTML_TEMPLATE = """
                                         <input type="text" name="end_time" class="form-control" placeholder="E.g. 11:30 AM">
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Instructor / Note</label>
-                                        <input type="text" name="notes" class="form-control" placeholder="E.g. Special weekend session">
+                                        <label class="form-label">Name of faculty incharge</label>
+                                        <input type="text" name="notes" class="form-control" placeholder="E.g. Prof. Sharma / Faculty incharge">
                                     </div>
                                 </div>
 
-                                <button type="submit" class="btn btn-outline btn-sm">Add to Schedule</button>
+                                <button type="submit" class="btn btn-outline btn-sm">Add Replacement Class</button>
                             </form>
 
                             {% if upcoming_overrides %}
                                 <div style="margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px;">
                                     <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">
-                                        📅 Upcoming Scheduled Manual / Weekend Classes ({{ upcoming_overrides|length }})
+                                        📅 Upcoming Scheduled Replacement / Weekend Classes ({{ upcoming_overrides|length }})
                                     </div>
                                     {% for ov in upcoming_overrides %}
                                         <div class="schedule-item additional" style="margin-bottom: 6px;">
@@ -2930,12 +2930,12 @@ HTML_TEMPLATE = """
                                                 <small style="color: #b45309;">{{ ov.start_time or 'TBD' }} – {{ ov.end_time or 'TBD' }}</small>
                                             </div>
                                             <div class="schedule-detail">
-                                                <div class="schedule-subject">{{ ov.subject }} <span class="badge badge-warning" style="font-size: 0.65rem;">MANUAL ENTRY</span></div>
-                                                <div class="schedule-meta">Room/Sec: {{ ov.room or '—' }} {% if ov.notes %}| Note: {{ ov.notes }}{% endif %}</div>
+                                                <div class="schedule-subject">{{ ov.subject }} <span class="badge badge-warning" style="font-size: 0.65rem;">REPLACEMENT CLASS</span></div>
+                                                <div class="schedule-meta">Room/Sec: {{ ov.room or '—' }} {% if ov.notes %}| Faculty Incharge: {{ ov.notes }}{% endif %}</div>
                                             </div>
                                             <form method="POST" action="{{ url_for('delete_schedule_override', override_id=ov.id) }}" style="display:inline;">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                                <button type="submit" class="btn btn-outline btn-sm" title="Remove" onclick="return confirm('Remove this class?');">✕</button>
+                                                <button type="submit" class="btn btn-outline btn-sm" title="Remove" onclick="return confirm('Remove this replacement class?');">✕</button>
                                             </form>
                                         </div>
                                     {% endfor %}

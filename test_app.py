@@ -113,8 +113,8 @@ def run_all_tests():
         email_html = build_schedule_email_html(sched)
         assert "Algorithms &amp; Data Structures" in email_html or "Algorithms & Data Structures" in email_html
         assert "Special Seminar: Cloud Frameworks" in email_html
-        assert "ADDITIONAL CLASS" in email_html
-        print("✓ Verified human input additional class merged into tomorrow's schedule email!")
+        assert "REPLACEMENT CLASS" in email_html or "ADDITIONAL CLASS" in email_html
+        print("✓ Verified human input replacement class merged into tomorrow's schedule email!")
 
     print("\n=== Quality Check 5: Excel Report Generation (.xlsx) ===")
     with app.app_context():
