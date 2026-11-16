@@ -2563,6 +2563,125 @@ HTML_TEMPLATE = """
             border-top: 1px solid var(--border);
             background: var(--bg-card);
         }
+
+        /* Mobile Responsiveness (Optimized for Android & Small Viewports) */
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px 10px;
+            }
+            .navbar {
+                padding: 10px 12px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .navbar-brand {
+                font-size: 1.1rem;
+            }
+            .navbar-actions {
+                gap: 6px;
+                flex-wrap: wrap;
+                width: 100%;
+                justify-content: space-between;
+            }
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .card {
+                padding: 14px 12px;
+                margin-bottom: 16px;
+                border-radius: 8px;
+            }
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                padding-bottom: 10px;
+                margin-bottom: 12px;
+            }
+            .card-title {
+                font-size: 0.95rem;
+                flex-wrap: wrap;
+            }
+            .card-header-accent {
+                margin: -14px -12px 14px -12px !important;
+                padding: 12px 14px !important;
+            }
+            .form-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .form-row .form-group {
+                width: 100%;
+            }
+            .form-control {
+                font-size: 16px; /* Prevents auto-zooming on Android Chrome */
+                padding: 10px 12px;
+                border-radius: 6px;
+            }
+            textarea.form-control {
+                font-size: 16px;
+            }
+            .btn {
+                padding: 10px 14px;
+                font-size: 0.85rem;
+                min-height: 40px;
+            }
+            .btn-group {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .btn-group .btn {
+                width: 100%;
+            }
+            .week-cards {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .day-card {
+                padding: 10px 8px;
+            }
+            .day-card-name {
+                font-size: 0.78rem;
+            }
+            .day-card-date {
+                font-size: 0.95rem;
+            }
+            .tab-nav {
+                display: flex;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 4px;
+                gap: 4px;
+                scrollbar-width: none;
+            }
+            .tab-nav::-webkit-scrollbar {
+                display: none;
+            }
+            .tab-btn {
+                flex: 1;
+                min-width: 42px;
+                padding: 8px 6px;
+                font-size: 0.8rem;
+                text-align: center;
+            }
+            .schedule-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+                padding: 10px;
+            }
+            .schedule-time {
+                min-width: auto;
+                font-size: 0.82rem;
+            }
+            .info-table {
+                font-size: 0.8rem;
+            }
+            .info-label {
+                width: 40%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2704,7 +2823,7 @@ HTML_TEMPLATE = """
 
                     <!-- Tomorrow's Schedule & Human Input Area -->
                     <div class="card" style="border: 1.5px solid var(--primary);">
-                        <div class="card-header" style="background: var(--primary-light); margin: -20px -20px 16px -20px; padding: 16px 20px; border-radius: var(--radius) var(--radius) 0 0;">
+                        <div class="card-header card-header-accent" style="background: var(--primary-light); margin: -20px -20px 16px -20px; padding: 16px 20px; border-radius: var(--radius) var(--radius) 0 0;">
                             <div>
                                 <span class="card-title" style="color: var(--primary);">
                                     ⏰ Tomorrow's Schedule: {{ tomorrow_schedule.weekday_name }}, {{ tomorrow.strftime('%d %b %Y') }}
@@ -2839,7 +2958,7 @@ HTML_TEMPLATE = """
                                     </button>
                                 </div>
                                 <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
-                                    💡 Prefilled with your manager email. You can change this address anytime right here.
+                                    Kindly place your manager's email address here .
                                 </p>
                             </div>
 
@@ -2850,7 +2969,7 @@ HTML_TEMPLATE = """
                                     👁️ Preview Email (What Manager Receives)
                                 </a>
                                 <span style="font-size: 0.75rem; color: var(--text-muted);">
-                                    • Sends simple message on: Date, Class, and Timings
+                                    • Sends a simple message on :Date , Class and Timings
                                 </span>
                             </div>
                         </form>
@@ -2863,7 +2982,7 @@ HTML_TEMPLATE = """
                             <span class="badge badge-info">Sent {{ settings.report_day }} @ {{ settings.report_time }}</span>
                         </div>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-                            Parses daily notes into categorized tasks, calculates hours, and prepares the <em>Weekly Report</em> and <em>Summary</em> sheets.
+                            Converts your daily work notes into organized tasks, tracks time spent, and generates weekly reports and summaries automatically.
                         </p>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <a href="{{ url_for('download_preview_report', date=selected_date.isoformat()) }}" class="btn btn-outline">
@@ -2886,23 +3005,33 @@ HTML_TEMPLATE = """
                         <div class="card-header">
                             <span class="card-title">🏫 Semester Timetable (Recurring)</span>
                         </div>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-                            This schedule remains fixed for the entire semester and automatically populates daily schedule dispatches.
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+                            This schedule remains fixed for the entire semester and automatically populates daily schedule dispatches. Records are fetched and synced directly from your Google Sheets.
                         </p>
 
-                        <!-- Extracted Picture Present Directly on Dashboard -->
-                        {% if latest_img %}
-                            <div style="margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg-card-subtle); text-align: center;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">📸 Uploaded Timetable Picture</span>
-                                    <a href="{{ url_for('preview_timetable') }}" target="_blank" class="btn btn-outline btn-sm">🔍 Open Full Image</a>
-                                </div>
-                                <img src="{{ url_for('preview_timetable') }}" alt="Uploaded Timetable Screenshot" style="width: 100%; max-height: 380px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); background: white;">
-                                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">
-                                    File: {{ latest_img.filename }} • Saved in Database
-                                </p>
+                        <!-- Live Cloud Excel / Google Sheets Auto-Sync -->
+                        <div style="background: var(--bg-card-subtle); padding: 14px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--border);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                <strong style="font-size: 0.85rem; color: var(--primary);">🔗 Google Sheets Cloud Sync</strong>
+                                {% if settings.timetable_excel_url %}
+                                    <span class="badge badge-success">Auto-Sync Active</span>
+                                {% else %}
+                                    <span class="badge badge-warning">Not Connected</span>
+                                {% endif %}
                             </div>
-                        {% endif %}
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
+                                Connected to Google Sheets. The app automatically fetches the latest classes before sending every night — <strong>no manual file uploading needed!</strong>
+                            </p>
+                            <form method="POST" action="{{ url_for('sync_timetable_url') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <input type="url" name="timetable_excel_url" class="form-control" value="{{ settings.timetable_excel_url }}" placeholder="https://docs.google.com/spreadsheets/d/.../edit" style="flex: 1; min-width: 200px; font-size: 0.85rem;" required>
+                                    <button type="submit" class="btn btn-primary btn-sm" style="white-space: nowrap;">
+                                        🔄 Sync from Cloud
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
 
                         <!-- Day Tabs (Monday to Sunday) -->
                         <div class="tab-nav">
@@ -2992,51 +3121,6 @@ HTML_TEMPLATE = """
                                 <button type="submit" class="btn btn-primary btn-sm btn-block">Save to Semester Timetable</button>
                             </form>
                         </details>
-
-                        <!-- Live Cloud Excel / Google Sheets Auto-Sync -->
-                        <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; background: var(--bg-card-subtle); padding: 12px; border-radius: 8px; margin-bottom: 14px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <strong style="font-size: 0.85rem; color: var(--primary);">🔗 Live Cloud Excel / Google Sheets Auto-Sync</strong>
-                                {% if settings.timetable_excel_url %}
-                                    <span class="badge badge-success">Auto-Sync Active</span>
-                                {% else %}
-                                    <span class="badge badge-warning">Not Connected</span>
-                                {% endif %}
-                            </div>
-                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
-                                Paste your Google Sheets or OneDrive link once. The app will automatically sync latest classes before sending every night — <strong>no manual uploading needed!</strong>
-                            </p>
-                            <form method="POST" action="{{ url_for('sync_timetable_url') }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <input type="url" name="timetable_excel_url" class="form-control" value="{{ settings.timetable_excel_url }}" placeholder="https://docs.google.com/spreadsheets/d/.../edit" style="flex: 1; min-width: 220px; font-size: 0.8rem;">
-                                    <button type="submit" class="btn btn-primary btn-sm" style="white-space: nowrap;">
-                                        🔄 Sync from Cloud
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <!-- Timetable Excel / File Upload & API -->
-                        <div style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <strong style="font-size: 0.85rem; color: var(--text-main);">📥 Manual Import (Excel File / CSV / Screenshot)</strong>
-                                <a href="{{ url_for('download_timetable_excel') }}" class="btn btn-outline btn-sm">📥 Download Excel Sheet</a>
-                            </div>
-                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
-                                Upload an Excel (.xlsx), CSV, or screenshot. Automatically parses class names, timings, and expands abbreviations.
-                            </p>
-                            <form method="POST" action="{{ url_for('upload_timetable') }}" enctype="multipart/form-data">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <input type="file" name="timetable_file" class="form-control" accept=".xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp" style="flex: 1; min-width: 200px;" required>
-                                    <button type="submit" class="btn btn-outline btn-sm" style="white-space: nowrap;">Import File</button>
-                                </div>
-                            </form>
-                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">
-                                💡 REST API: <code>POST /api/timetable/upload</code> (file upload) • <code>GET /api/timetable/slots</code> (JSON)
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Live App Settings Card (Always visible and easily editable) -->
@@ -3100,7 +3184,6 @@ HTML_TEMPLATE = """
 
                         <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
                             <div>🕒 Current Server Time: <strong>{{ now_str }}</strong></div>
-                            <div>🤖 AI Parser: <strong>{% if settings.gemini_active %}{{ settings.gemini_model }}{% else %}Rule-Based Fallback{% endif %}</strong></div>
                             <div>📧 Gmail SMTP: <strong>{% if settings.smtp_configured %}Configured (Ready to Send){% else %}Missing credentials in .env{% endif %}</strong></div>
                         </div>
                     </div>
