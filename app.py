@@ -1688,6 +1688,7 @@ def dashboard():
         tomorrow_schedule=tomorrow_schedule,
         slots_by_day=slots_by_day,
         latest_img=latest_img,
+        cron_secret=get_config("CRON_SECRET", "WorkReporterCron2026"),
         settings=settings_info
     )
 
@@ -3182,9 +3183,15 @@ HTML_TEMPLATE = """
                             </button>
                         </form>
 
-                        <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+                        <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted); line-height: 1.6;">
                             <div>🕒 Current Server Time: <strong>{{ now_str }}</strong></div>
-                            <div>📧 Gmail SMTP: <strong>{% if settings.smtp_configured %}Configured (Ready to Send){% else %}Missing credentials in .env{% endif %}</strong></div>
+                            <div style="margin-top: 6px;">📡 <strong>Automated Cron URL (for cron-job.org):</strong></div>
+                            <div style="background: var(--bg-card-subtle); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 0.75rem; word-break: break-all; margin: 4px 0; border: 1px solid var(--border); color: var(--primary);">
+                                {{ request.host_url }}cron/tick?key={{ cron_secret }}
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">
+                                💡 Copy & paste this exact URL into <a href="https://cron-job.org" target="_blank" style="color: var(--primary);">cron-job.org</a> with a 10-minute interval.
+                            </div>
                         </div>
                     </div>
                 </div>
