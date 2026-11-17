@@ -30,6 +30,10 @@ import requests
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("work_reporter")
 
 # Ensure .env is loaded
 load_dotenv(override=True)
@@ -39,11 +43,20 @@ load_dotenv(override=True)
 # ==============================================================================
 def get_config(key, default=""):
     """
-    Dynamically loads configuration from .env so any changes made to .env
-    (e.g. changing MANAGER_EMAIL or APP_PASSWORD) take effect immediately
-    without requiring a server restart.
+    Dynamically loads configuration:
+    1. First checks persistent PostgreSQL database (AppSetting table) if available.
+    2. Falls back to environment variable / .env file.
+    Ensures settings changes made via the UI are permanent on Render.
     """
-    load_dotenv(override=True)
+    try:
+        if "AppSetting" in globals():
+            val = AppSetting.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+    except Exception:
+        pass
+
+    load_dotenv(override=False)
     val = os.getenv(key, default)
     return str(val).strip() if val is not None else default
 
@@ -86,16 +99,19 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = get_config("SECRET_KEY", "work-reporter-secret-key-32")
 
 # Database: read DATABASE_URL (Neon Postgres) or fallback to local SQLite
-DATABASE_URL = get_config("DATABASE_URL", "")
-if DATABASE_URL:
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
-    elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
-        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+if os.environ.get("TESTING") == "1":
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
 else:
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(basedir, 'work_reporter.db')}"
+    DATABASE_URL = get_config("DATABASE_URL", "")
+    if DATABASE_URL:
+        if DATABASE_URL.startswith("postgres://"):
+            DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
+            DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+        app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+    else:
+        basedir = os.path.abspath(os.path.dirname(__file__))
+        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(basedir, 'work_reporter.db')}"
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
@@ -177,8 +193,59 @@ class Sent(db.Model):
     details = db.Column(db.Text, nullable=True)
 
 
+class AppSetting(db.Model):
+    """
+    Key-value application settings stored in PostgreSQL.
+    Ensures that settings configured via the web UI persist across
+    Render container restarts, redeployments, and sleeping dynos.
+    """
+    __tablename__ = "app_settings"
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+
+    @classmethod
+    def get(cls, key, default=""):
+        try:
+            row = cls.query.filter_by(key=key).first()
+            if row and row.value is not None:
+                return row.value
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        return default
+
+    @classmethod
+    def set(cls, key, value):
+        try:
+            row = cls.query.filter_by(key=key).first()
+            if row:
+                row.value = value
+            else:
+                db.session.add(cls(key=key, value=value))
+            db.session.commit()
+            return True
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return False
+
+
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        logger.warning(f"Initial DB create_all warning: {e}")
+        if "OperationalError" in str(type(e).__name__) or "could not translate host name" in str(e):
+            basedir = os.path.abspath(os.path.dirname(__file__))
+            app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(basedir, 'work_reporter.db')}"
+            try:
+                db.create_all()
+            except Exception:
+                pass
 
 # ==============================================================================
 # Timezones & Date Utilities
@@ -201,12 +268,35 @@ def get_now_user():
 
 
 def parse_time_str(time_str):
-    """Parses 'HH:MM' string into datetime.time object."""
-    try:
-        parts = time_str.strip().split(":")
-        return time(int(parts[0]), int(parts[1]))
-    except Exception:
-        return time(21, 0)
+    """
+    Robustly parses any user time string into a datetime.time object.
+    Supports:
+    - 24-hour formats: '18:00', '09:00', '9:00', '9'
+    - 12-hour AM/PM formats: '9:00 am', '9 :00 am', '9:00am', '9:00 AM', '09:00 AM', '9 AM', '9 PM', '9:30 pm'
+    Defaults to 18:00 (6:00 PM) if unparseable.
+    """
+    if not time_str:
+        return time(18, 0)
+    raw = str(time_str).strip()
+    raw = re.sub(r'\s+', ' ', raw)
+    for fmt in ("%H:%M", "%I:%M %p", "%I:%M%p", "%I %p", "%H"):
+        try:
+            return datetime.strptime(raw.upper(), fmt).time()
+        except ValueError:
+            pass
+    # Regex fallback
+    m = re.search(r'(\d{1,2})(?:\s*:\s*(\d{2}))?\s*(am|pm)?', raw, re.IGNORECASE)
+    if m:
+        hr = int(m.group(1))
+        mn = int(m.group(2) or 0)
+        meridiem = (m.group(3) or "").lower()
+        if meridiem == "pm" and hr < 12:
+            hr += 12
+        elif meridiem == "am" and hr == 12:
+            hr = 0
+        if 0 <= hr <= 23 and 0 <= mn <= 59:
+            return time(hr, mn)
+    return time(18, 0)
 
 
 def get_week_range(ref_date=None, include_weekend=True):
@@ -1545,13 +1635,19 @@ def cron_tick():
         return jsonify({
             "status": "ok",
             "message": "Nothing due at this time",
-            "current_time": now.isoformat(),
-            "weekday": get_weekday_name(weekday)
+            "current_time": now.strftime("%Y-%m-%d %I:%M:%S %p"),
+            "weekday": get_weekday_name(weekday),
+            "configured_schedule_time": schedule_time_str,
+            "parsed_schedule_time": str(parse_time_str(schedule_time_str)),
+            "schedule_time_due": is_time_due(schedule_time_str),
+            "configured_report_time": report_time_str,
+            "report_day": get_weekday_name(report_day),
+            "report_time_due": (weekday == report_day and is_time_due(report_time_str))
         }), 200
 
     return jsonify({
         "status": "ok",
-        "current_time": now.isoformat(),
+        "current_time": now.strftime("%Y-%m-%d %I:%M:%S %p"),
         "weekday": get_weekday_name(weekday),
         "actions": actions_executed
     }), 200
@@ -1656,7 +1752,7 @@ def dashboard():
     # 4. Latest timetable file/screenshot
     latest_img = TimetableImage.query.order_by(TimetableImage.uploaded_at.desc()).first()
 
-    # 5. Live App Settings (Dynamically loaded from .env)
+    # 5. Live App Settings (Dynamically loaded from PostgreSQL / .env)
     settings_info = {
         "manager_email": get_config("MANAGER_EMAIL", "manager@example.com"),
         "owner_email": get_config("OWNER_EMAIL", "owner@example.com"),
@@ -1667,7 +1763,9 @@ def dashboard():
         "gemini_active": bool(get_config("GEMINI_API_KEY", "").strip()),
         "gemini_model": get_config("GEMINI_MODEL", "gemini-1.5-flash"),
         "timetable_excel_url": get_config("TIMETABLE_EXCEL_URL", ""),
-        "smtp_configured": bool(get_config("SMTP_HOST") and get_config("SMTP_USER") and get_config("SMTP_PASS"))
+        "gmail_relay_url": get_config("GMAIL_RELAY_URL", ""),
+        "smtp_configured": bool(get_config("SMTP_HOST") and get_config("SMTP_USER") and get_config("SMTP_PASS")),
+        "relay_configured": bool(get_config("GMAIL_RELAY_URL", "").strip() or get_config("BREVO_API_KEY", "").strip())
     }
 
     return render_template_string(
@@ -2191,15 +2289,25 @@ def save_settings():
         "REPORT_TIME": request.form.get("report_time", "17:00").strip(),
         "REPORT_DAY": request.form.get("report_day", "4").strip(),
         "TIMEZONE": request.form.get("timezone", "Asia/Kolkata").strip(),
-        "TIMETABLE_EXCEL_URL": request.form.get("timetable_excel_url", "").strip()
+        "TIMETABLE_EXCEL_URL": request.form.get("timetable_excel_url", "").strip(),
+        "GMAIL_RELAY_URL": request.form.get("gmail_relay_url", "").strip(),
     }
 
     gemini_key = request.form.get("gemini_api_key", "").strip()
     if gemini_key:
         new_settings["GEMINI_API_KEY"] = gemini_key
 
-    update_env_file(new_settings)
-    flash("Settings updated successfully! Changes are live immediately.", "success")
+    # Save to PostgreSQL database (persists across Render container restarts)
+    for k, v in new_settings.items():
+        AppSetting.set(k, v)
+
+    # Also update .env file if writable
+    try:
+        update_env_file(new_settings)
+    except Exception:
+        pass
+
+    flash("Settings updated successfully! Changes are saved to database and live immediately.", "success")
     return redirect(url_for("dashboard"))
 
 # ==============================================================================
@@ -3151,12 +3259,26 @@ HTML_TEMPLATE = """
                             <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label">Schedule Send Time (Day Before)</label>
-                                    <input type="text" name="schedule_time" class="form-control" value="{{ settings.schedule_time }}" placeholder="18:00">
+                                    <input type="text" name="schedule_time" class="form-control" value="{{ settings.schedule_time }}" placeholder="18:00 or 9:00 PM">
+                                    <small style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">
+                                        Supports 24h (18:00, 21:00) or 12h (9:00 PM, 6:00 PM).
+                                    </small>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Weekly Report Time</label>
-                                    <input type="text" name="report_time" class="form-control" value="{{ settings.report_time }}" placeholder="17:00">
+                                    <input type="text" name="report_time" class="form-control" value="{{ settings.report_time }}" placeholder="17:00 or 5:00 PM">
+                                    <small style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">
+                                        Sent on Fridays automatically.
+                                    </small>
                                 </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Google Apps Script Relay URL (Optional - Bypasses Render Email Block)</label>
+                                <input type="url" name="gmail_relay_url" class="form-control" value="{{ settings.gmail_relay_url }}" placeholder="https://script.google.com/macros/s/.../exec">
+                                <small style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">
+                                    💡 Render free tier blocks outbound SMTP port 587. A free Google Apps Script web app sends directly through your Gmail without port blocks.
+                                </small>
                             </div>
 
                             <div class="form-row">

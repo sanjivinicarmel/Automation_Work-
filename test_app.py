@@ -4,13 +4,14 @@ Uses dynamic config and isolates test operations so user's real notes are never 
 """
 
 import os
+os.environ["TESTING"] = "1"
 import io
 import openpyxl
 from datetime import date, timedelta
 from app import (
     app, db, DailyNote, TimetableSlot, ScheduleOverride, TimetableImage,
-    Sent, parse_notes_fallback, generate_weekly_report_excel, build_week_report_data,
-    get_config, get_schedule_for_date, build_schedule_email_html
+    Sent, AppSetting, parse_notes_fallback, generate_weekly_report_excel, build_week_report_data,
+    get_config, get_schedule_for_date, build_schedule_email_html, parse_time_str
 )
 
 def run_all_tests():
@@ -248,6 +249,34 @@ def run_all_tests():
     assert upload_res["status"] == "success"
     assert upload_res["count"] == 8
     print("✓ POST /api/timetable/upload successfully imported Excel via REST API.")
+
+    print("\n=== Quality Check 10: Robust AM/PM Time Parsing & Database AppSetting ===")
+    from datetime import time
+    assert parse_time_str("9:00 am") == time(9, 0)
+    assert parse_time_str("9 :00 am") == time(9, 0)
+    assert parse_time_str("9:00 AM") == time(9, 0)
+    assert parse_time_str("09:00 AM") == time(9, 0)
+    assert parse_time_str("9:00 pm") == time(21, 0)
+    assert parse_time_str("9:00 PM") == time(21, 0)
+    assert parse_time_str("18:00") == time(18, 0)
+    assert parse_time_str("9 AM") == time(9, 0)
+    assert parse_time_str("9 PM") == time(21, 0)
+    print("✓ All 12-hour AM/PM and 24-hour time strings parsed accurately.")
+
+    with app.app_context():
+        AppSetting.set("SCHEDULE_TIME", "09:00 AM")
+        assert get_config("SCHEDULE_TIME") == "09:00 AM"
+        assert parse_time_str(get_config("SCHEDULE_TIME")) == time(9, 0)
+        print("✓ AppSetting database persistence verified.")
+
+    # Verify /cron/tick response format
+    cron_secret = get_config("CRON_SECRET", "test-cron-secret-xyz")
+    cron_resp = client.get(f"/cron/tick?key={cron_secret}")
+    assert cron_resp.status_code == 200
+    cron_data = cron_resp.get_json()
+    assert cron_data["status"] == "ok"
+    assert "configured_schedule_time" in cron_data or "actions" in cron_data
+    print("✓ GET /cron/tick returns detailed diagnostics status.")
 
     print("\n==========================================")
     print("ALL TESTS PASSED SUCCESSFULLY! 🚀")
